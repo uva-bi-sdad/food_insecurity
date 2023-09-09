@@ -1,4 +1,3 @@
-
 ACS 5-YR household data from the University of Minnesota’s Integrated Public Use Microdata Series.
 
 The microdata was obtain from IPUMS (https://usa.ipums.org/usa/) that collects, preserves and harmonizes U.S. census microdata. 
@@ -68,3 +67,4 @@ pos variable label                                          col_type missing lev
  17  FTOTINC  Total family income                            dbl+lbl  0             
 
 Complete IPUMS data dictionary can be found at: https://usa.ipums.org/usa/resources/codebooks/DataDict1620.pdf 
+
