@@ -1,0 +1,5 @@
+This folder contains the R source code to:
+1. create the IPF estimates: dc_ipf_procedure.Rmd;
+2. add derived variables to the acs pums data: fc_acs_pums_derived_variables_2021.R; 
+3.  
+4.
