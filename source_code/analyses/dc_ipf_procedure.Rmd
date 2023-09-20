@@ -138,6 +138,10 @@ puma_ct_fairfax_20 <- puma_ct_fairfax_20 %>% left_join(puma_dc_12, by = c("fips"
 
 names(puma_ct_fairfax_20)[names(puma_ct_fairfax_20)=="PUMA5CE"] <- "PUMA5CE_new"
 names(puma_ct_fairfax_20)[names(puma_ct_fairfax_20)=="puma12"] <- "PUMA5CE"
+
+
+
+write_csv(puma_ct_fairfax_20, "~/Documents/food_insecurity/data/demographic/crosswalks/dc_crosswalk_puma_ct_2020.csv")
 ```
 
 
