@@ -416,9 +416,9 @@ ipf_full <- ipf_full %>% mutate(income_recode = case_when(rowname == "I.1" ~ 1,
 ```{r}
 
 #save file in 
-if(!file.exists( paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_", state_name, "_acs_ipf_estimates_2022.csv") )){
+if(!file.exists( paste0("~/Documents/food_insecurity/documents/products/derived_variables/", state_name, "_acs_ipf_estimates_2021.csv") )){
   
-  write.csv(ipf_full, paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_", state_name, "_acs_ipf_estimates_2022.csv") , row.names = FALSE)
+  write.csv(ipf_full, paste0("~/Documents/food_insecurity/documents/products/derived_variables/", state_name, "_acs_ipf_estimates_2021.csv") , row.names = FALSE)
 }
 
 
