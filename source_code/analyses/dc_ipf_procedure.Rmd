@@ -1,0 +1,427 @@
+---
+title: "IPF procedure for the HLB exercise"
+author: "cm"
+date: "12/26/2022"
+update: "09/18/2023"
+output: html_document
+
+Notes: 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Start fresh
+```{r}
+rm(list=ls())
+```
+# libraries
+```{r}
+#install.packages("ipumsr")
+library(ipumsr)
+# install.packages("tidyverse")
+# library(tidyverse)
+library(survival)
+library(ggfortify)
+library(dplyr)
+library(readxl)
+# install.packages("tidycensus")
+library(tidycensus)
+library(ggplot2)
+library(viridis)
+# install.packages("acs")
+library(acs)
+library(mipfp)
+library(reshape2)
+#install.packages("mipfp")
+library(tigris)
+library(leaflet)
+library(readr)
+```
+
+# Load data from ipums
+#add vairables chosen in ipums: 2020, 5 year estimates
+```{r}
+#url from github repo
+url_git <- "https://raw.githubusercontent.com/uva-bi-sdad/food_insecurity/main/documents/products/derived_variables/dc_acs_pums_derived_variables_2021.csv"
+
+#load data
+data <- read.csv(url_git)
+
+#number households 
+sum(data$hh_wt)
+```
+
+#Specify the fips code for the County: 
+```{r}
+county_fips <- 11001  #District of Columbia - Washington DC
+county_name <- "DC"
+name_files <- "washington"
+state_name <- "dc"
+
+state_fip <- substr(county_fips, 1,2)
+county_fip <- substr(county_fips, 3,5)
+
+```
+
+# County: income cat and hhsize by PUMA: SEED Distributions 
+```{r}
+# list of pumas - County
+list_puma_county <- unique(data$puma)
+
+#initiate list
+matrix_county <- list()
+
+#loop
+for (i in list_puma_county) {
+
+#Data for Fairfax only
+data_fairfax <- data %>% filter(puma %in% list_puma_county)
+#Data for specific PUMA only.  Separate 9999999: it is not income data, it is nonexistant
+data_county_puma <- data_fairfax %>% filter(puma == i )
+
+
+#final matrix
+matrix_county[[which(list_puma_county==i)]] <- dcast(data_county_puma, hh_income_cat ~ hh_size_recode, value.var= 'hh_wt', fun=sum)
+
+}
+
+#Names for every table in the list
+names(matrix_county) <- list_puma_county
+
+```
+
+
+# Crosswalks Census Tracts - PUMA
+
+```{r}
+#source https://www.census.gov/programs-surveys/geography/guidance/geo-areas/pumas.html
+#source tallies https://www2.census.gov/geo/docs/maps-data/data/geo_tallies2020/tallies_by_state/Virginia_51.txt 
+puma_ct <- read_delim("~/Documents/food_insecurity/data/demographic/crosswalks/2010_Census_Tract_to_2010_PUMA.txt", delim = ",")
+puma_ct_20 <- read_delim("~/Documents/food_insecurity/data/demographic/crosswalks/2020_Census_Tract_to_2020_PUMA.txt", delim = ",")
+
+# crosswalk for Fairfax County only
+puma_ct_fairfax <- puma_ct %>% filter(STATEFP== state_fip, COUNTYFP== county_fip)
+puma_ct_fairfax_20_county <- puma_ct_20 %>% filter(STATEFP== state_fip, COUNTYFP== county_fip)
+
+#puma_ct_fairfax_2 <- puma_ct_fairfax %>% head(2)
+puma_ct_fairfax$fips <- paste0(puma_ct_fairfax$STATEFP, puma_ct_fairfax$COUNTYFP, puma_ct_fairfax$TRACTCE )
+puma_ct_fairfax_20$fips <- paste0(puma_ct_fairfax_20$STATEFP, puma_ct_fairfax_20$COUNTYFP, puma_ct_fairfax_20$TRACTCE )
+
+#comparison
+compare_puma_ct <- puma_ct_fairfax_20 %>% left_join(puma_ct_fairfax, by='fips')
+
+
+#######
+
+table(compare_puma_ct$PUMA5CE_20, compare_puma_ct$PUMA5CE)
+
+#new equivalence
+#IPUMS has 7 pumas.  
+compare_puma_ct <- compare_puma_ct %>% mutate(PUMArev = case_when(#PUMA5CE.x == 01001 ~ 01001,
+                                                                  PUMA5CE_20 == '00105' & PUMA5CE == '00102' ~ '00102',
+                                                                  PUMA5CE_20 == '00102' & PUMA5CE == '00103' ~ '00103',
+                                                                  PUMA5CE_20 == '00106' & PUMA5CE == '00104' ~ '00104',
+                                                                  PUMA5CE_20 == '00106' & PUMA5CE == '00105' ~ '00105'
+                                                                  )) %>% mutate( PUMA5CE = ifelse(is.na(PUMArev), PUMA5CE_20, PUMArev))
+# 
+# #join new column with the info from old puma       
+names(puma_ct_fairfax_20)[names(puma_ct_fairfax_20) == "PUMA5CE"] <- "PUMA20"
+puma_ct_fairfax_20 <- puma_ct_fairfax_20 %>% left_join(compare_puma_ct %>% select(fips, PUMA5CE), by = "fips" )
+
+### add
+
+puma_dc_12 <- read_excel("~/Documents/food_insecurity/data/demographic/crosswalks/washington_dc_pumas_geoid.xlsx", sheet = "Sheet1")
+
+#join possible match for puma
+puma_ct_fairfax_20 <- puma_ct_fairfax_20 %>% left_join(puma_dc_12, by = c("fips"= "geoid") )
+
+names(puma_ct_fairfax_20)[names(puma_ct_fairfax_20)=="PUMA5CE"] <- "PUMA5CE_new"
+names(puma_ct_fairfax_20)[names(puma_ct_fairfax_20)=="puma12"] <- "PUMA5CE"
+```
+
+
+# Loop for all census tracts
+```{r}
+#FIPS and PUMA codes
+county_info <- puma_ct_fairfax_20 %>% select(fips, PUMA5CE) 
+
+names(county_info) <- c('tract', 'PUMA5CE')
+
+#vector <- c(51059415300)
+vector <- county_info$tract
+
+#Number of Households 
+## 2.1 Household number
+census_api_key(Sys.getenv("census_key"))
+
+#family variables.  hhf1: number of households by household size
+hhf_county_ct <- get_acs(geography = "tract",
+                     year = 2021,
+                     variables = c(
+                                   hhf2 = 'B11016_003',
+                                   hhf3 = 'B11016_004',
+                                   hhf4 = 'B11016_005',
+                                   hhf5 = 'B11016_006',
+                                   hhf6 = 'B11016_007',
+                                   hhf7 = 'B11016_008'
+                                   ),
+                     state = state_name,
+                     #county = county_name,
+                     survey = "acs5",
+                     geometry = FALSE) %>% 
+                      # deselect margin of error columns
+                      select(-ends_with("M"))
+
+#non family variables.  hhnf1: number of households by household size
+hhnf_county_ct <- get_acs(geography = "tract", 
+                     year = 2021,
+                     variables = c(hhnf1 = 'B11016_010',
+                                   hhnf2 = 'B11016_011',
+                                   hhnf3 = 'B11016_012',
+                                   hhnf4 = 'B11016_013',
+                                   hhnf5 = 'B11016_014',
+                                   hhnf6 = 'B11016_015',
+                                   hhnf7 = 'B11016_016'
+                                   ), 
+                     state = state_name,
+                     #county = county_name,
+                     survey = "acs5",
+                     geometry = FALSE) %>% 
+                      # deselect margin of error columns
+                      select(-ends_with("M"))
+
+
+#2.2 By Income category
+prop_income_ct <- get_acs(geography = "tract", 
+                     year = 2021,
+                     variables = c(
+                       I.1 = 'B19001_002',		
+                       I.2 = 'B19001_003',
+                       I.3 = 'B19001_004',
+                       I.4 = 'B19001_005',
+                       I.5 = 'B19001_006',
+                       I.6 = 'B19001_007',
+                       I.7 = 'B19001_008',
+                       I.8 = 'B19001_009',
+                       I.9 = 'B19001_010',
+                       I.10 = 'B19001_011',
+                       I.11 = 'B19001_012',
+                       I.12 = 'B19001_013',
+                       I.13 = 'B19001_014',
+                       I.14 = 'B19001_015',
+                       I.15 = 'B19001_016',
+                       I.16 = 'B19001_017'), 
+                     state = state_name,
+                     #county = county_name,
+                     survey = "acs5",
+                     output = "wide",
+                     geometry = FALSE) %>% 
+                      # deselect margin of error columns
+                      select(-ends_with("M"))
+
+
+#Init lists
+list_ipf <- list()
+list_ci <- list()
+list_goodfit <- list()
+list_ci_element <- list()
+list_goodfit_element <- list()
+
+
+conv_tract_list <- data.frame(matrix(NA, ncol = 3, nrow = length(vector)))
+colnames(conv_tract_list) <- c("tract","convergence", "num_hh")
+#conv_tract_list <- list()
+
+
+# loop
+for (i in vector){
+#print(i)
+our_puma <- county_info %>% filter(tract == i) %>% pull(PUMA5CE)
+#select the respective puma table for the tract
+seed.table_county <- matrix_county[[as.character(our_puma)]]
+
+#names
+seed.table_county <- array(data = c(unlist(seed.table_county[ , 2:6])),
+dim = c(9, 5),
+dimnames = list(c("I.1", "I.2","I.3","I.4","I.5","I.6","I.7","I.8","I.9" ),
+                c("hh1", "hh2","hh3","hh4","hh5" )
+                )
+)
+
+# 2 Number households family
+hhf_county_ct_test <- hhf_county_ct %>% dplyr::filter(GEOID ==  i ) %>% select(estimate) #%>% as.data.frame()
+
+# 2 Number households non family
+hhnf_county_ct_test <- hhnf_county_ct %>% filter(GEOID== i ) %>% select(estimate) %>% as.data.frame()
+
+hh_list_init <- c(rbind(0,hhf_county_ct_test) + hhnf_county_ct_test) %>% unlist()
+
+#added hh
+hh_list <- c(hh_list_init[1:4], sum(hh_list_init[5:7])) + c(0.00001, 0.00001, 0.00001, 0.00001, 0.00001) #c(1, 1, 1, 1, 1)
+
+
+names(hh_list) <- c("hh1", "hh2", "hh3", "hh4", "hh5") 
+
+
+#income
+#filter specific tract
+prop_income_ct_test <- prop_income_ct %>% filter(GEOID== i ) %>% as.data.frame()
+
+#model3
+income_list <- prop_income_ct_test %>% mutate(
+                                            I.1 = I.1E + I.2E + 0.00001, 
+                                            I.2 = I.3E + I.4E + 0.00001,
+                                            I.3 = I.5E + I.6E + 0.00001,
+                                            I.4 = I.7E + I.8E + I.9E + 0.00001,
+                                            I.5 = I.10E + I.11E + 0.00001,
+                                            I.6 = I.12E ,
+                                            I.7 = I.13E + I.14E,
+                                            I.8 = I.15E,
+                                            I.9 = I.16E) %>% select(I.1, I.2, I.3, I.4, I.5, I.6, I.7, I.8, I.9) %>% unlist()
+
+
+# 3 Formats table: Expand margin to obtain format
+#1 margin tables hhsize
+margin_hh <- hh_list
+
+#2 margin tables income category
+margin_income <- income_list
+
+#view margins in format
+margin_hh
+margin_income
+#confirm length
+sum(margin_income)
+sum(margin_hh)
+#condition
+sum(unlist(margin_income))==sum(margin_hh)
+
+
+# 4 Set Target list
+tgt.data_county <- list( margin_income, margin_hh  )
+
+
+# 5 Dimensions: the index of the variables involved
+tgt.list.dims_county <- list( 1, 2)
+
+print(i)
+
+tryCatch({
+  r.ipfp_county <- Estimate(seed = seed.table_county, target.list = tgt.list.dims_county, target.data = tgt.data_county, method = "ml") 
+  ipf_ipfp_county <- round(r.ipfp_county$x.hat, 3)
+  # if(goodness of fit){
+  #   append to list
+  # }
+  # Matrix IPF
+  
+},
+  error = function(e) {
+ r.ipfp_county <- "missing"
+}
+)
+
+#filling list
+list_ipf[[which(county_info$tract== i )]] <- ipf_ipfp_county
+
+#convergence
+conv_tract_list[ which(county_info$tract== i ) , ] <- c(i, r.ipfp_county$conv, sum(ipf_ipfp_county) )
+
+
+#------------------
+#Confidence intervals
+#list_ci[[which(county_info$tract== i )]] <- confint(r.ipfp_county)
+tryCatch({
+  list_ci_element <- confint(r.ipfp_county, level = 0.90)
+
+},
+  error = function(e) {
+ list_ci_element <- "no confidence interval"
+}
+)
+
+#filling list
+list_ci[[which(county_info$tract== i )]] <- list_ci_element
+
+#------------------
+#Goodness of fit
+tryCatch({
+  list_goodfit_element <- summary(r.ipfp_county)$stats.gof
+
+},
+  error = function(e) {
+ list_goodfit_element <- "noresult"
+}
+)
+
+#filling list
+list_goodfit[[which(county_info$tract== i )]] <- list_goodfit_element
+###
+
+
+}  
+
+#------------------
+# Specify names
+names(list_ipf) <- vector
+names(list_ci) <- vector
+names(list_goodfit) <- vector 
+
+
+#------------------
+# compile all the matrices into one data set
+ipf <- NULL
+ipf_full <- NULL
+
+library(tibble)
+#make long list with all tracts with ipf
+for(j in vector){
+test <- list_ipf[[as.character(j)]]
+ipf <- as.data.frame(test) %>% rownames_to_column() %>% melt() %>% mutate(geoid = names(list_ipf[as.character(j)]))
+ipf_full <- rbind(ipf, ipf_full)
+}
+
+ipf_full$value <- round(ipf_full$value,0)
+
+
+```
+
+#change categories
+
+```{r}
+ipf_full <- ipf_full %>% mutate(income_recode = case_when(rowname == "I.1" ~ 1,
+                                                          rowname == "I.2" ~ 2,
+                                                          rowname == "I.3" ~ 3,
+                                                          rowname == "I.4" ~ 4,
+                                                          rowname == "I.5" ~ 5,
+                                                          rowname == "I.6" ~ 6,
+                                                          rowname == "I.7" ~ 7,
+                                                          rowname == "I.8" ~ 8,
+                                                          rowname == "I.9" ~ 9
+                                                          ), 
+                                size_recode = case_when( variable == "hh1" ~ 1,
+                                                         variable == "hh2" ~ 2,
+                                                         variable == "hh3" ~ 3,
+                                                         variable == "hh4" ~ 4,
+                                                         variable == "hh5" ~ 5
+                                                         ), 
+                                ipf = round(value, 0)
+                                ) %>% 
+  select(geoid, income_recode, size_recode, ipf)
+
+```
+
+
+# Save file
+```{r}
+
+#save file in 
+if(!file.exists( paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_", state_name, "_acs_ipf_estimates_2022.csv") )){
+  
+  write.csv(ipf_full, paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_", state_name, "_acs_ipf_estimates_2022.csv") , row.names = FALSE)
+}
+
+
+  
+```
+
