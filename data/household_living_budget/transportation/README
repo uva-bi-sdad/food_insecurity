@@ -1,0 +1,6 @@
+This folder contains the data for the HLB transportation component as well as the meta data folder.
+
+The file named va_tr_cnt_transportation_cost_2022.csv comes from the Center for Neighbordhood Tecnology, as part of the H+T index.  We used the variable t_ami_cost representing 
+Name of the original file downloaded from https://htaindex.cnt.org/download/data.php: htaindex2020_data_tracts_51.csv
+
+

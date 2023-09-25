@@ -1,0 +1,319 @@
+---
+title: "Food Insecurity using Household Living Budget - HLB"
+author: "cm"
+date: "09/24/2023" #update from the previous code
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Start fresh
+```{r}
+rm(list=ls())
+```
+
+# Libraries
+```{r}
+#install.packages("ipumsr")
+library(ipumsr)
+#install.packages("tidyverse")
+#library(tidyverse)
+library(survival)
+library(ggfortify)
+library(dplyr)
+library(readxl)
+library(readr)
+library(reshape2)
+library(tidyr)
+```
+
+#  ######################## 1 DETAILS: Specify the fips code for the State and county ########################
+```{r}
+
+county_fips <- 11001  #District of Columbia - Washington DC
+county_name <- "DC"
+name_files <- "dc"
+state_name <- "dc"
+
+state_fip <- substr(county_fips, 1,2)
+county_fip <- substr(county_fips, 3,5)
+
+```
+
+## Data
+```{r}
+######## direct upload with repo
+#data_syn_pop <- read_csv("~/Documents/food_insecurity/source_code/analyses/dc_pums_synpop_2021.csv.zip")
+
+######## upload from url
+#url-raw info
+url_synpop <- "https://github.com/uva-bi-sdad/food_insecurity/raw/main/documents/products/data_tables/dc_pums_synpop_2021.csv.zip"
+
+#destination file: CHOOSE anywhere you want to download it
+destfile_synpop <- "~/Documents/food_insecurity/documents/products/derived_variables/download_dc_2021.csv.zip"
+
+#download file and save in specified destination
+download.file(url_synpop, destfile_synpop)
+
+#open csv zip
+data_syn_pop <- read_csv("~/Documents/food_insecurity/documents/products/derived_variables/download_dc_2021.csv.zip") 
+
+#data set for hlb
+dat_hlb <- data_syn_pop
+ 
+#add row number as serial: this is the identifier for every household in the county
+dat_hlb$serial <- seq.int(nrow(dat_hlb))
+ 
+```
+
+#  ######################## 2 Household Living Budget Components - HLB  ########################
+
+# 2.1 Exercise at the household level
+
+# Food Cost 
+```{r}
+#source:
+#https://www.fns.usda.gov/cnpp/usda-food-plans-cost-food-reports-monthly-reports
+#https://fns-prod.azureedge.us/sites/default/files/media/file/CostofFoodAug2022LowModLib.pdf
+#adjustmen Feeding America
+#https://map.feedingamerica.org/county/2020/overall/virginia
+
+#data counties
+food_cost_adj <- read_excel('~/Documents/food_insecurity/data/household_living_budget/food/va_ct_feeding_america_map_meal_gap_2022SEP.xlsx')
+
+#data USDA USA
+usda_meal_plan_sep2022 <- read_csv("~/Documents/food_insecurity/data/household_living_budget/food/national_usda_meal_plans_2022SEP.csv", skip = 1)
+
+#data USDA categories and cost
+usda_low_cost_meal <- usda_meal_plan_sep2022 %>% select(group=`...2`, monthly_cost=`Low-cost...6`) %>% filter( !is.na(monthly_cost)) %>% filter(monthly_cost!= 'plan')
+
+#remove $
+usda_low_cost_meal$monthly_cost <- gsub( '\\$' ,'', usda_low_cost_meal$monthly_cost )
+
+#vector with costs
+food_cost_general <-  data.frame(
+no_adult=  mean( c(as.numeric( usda_low_cost_meal %>% filter(group=='19-50 years') %>% pull(monthly_cost) ) ) ),
+no_infant= as.numeric( usda_low_cost_meal %>% filter(group=='1 year') %>% pull(monthly_cost) ) ,
+no_toddler=  mean( c(as.numeric( usda_low_cost_meal %>% filter(group=='2-3 years') %>% pull(monthly_cost) ) ) ),
+no_preschooler= mean(as.numeric(usda_low_cost_meal %>% filter(group=='4-5 years') %>% pull(monthly_cost)) ),
+no_schooler= mean(c( as.numeric(usda_low_cost_meal %>% filter(group=='6-8 years') %>% pull(monthly_cost)) ,
+                     as.numeric(usda_low_cost_meal %>% filter(group=='9-11 years') %>% pull(monthly_cost)) )),
+no_teenager=  mean(c( as.numeric(usda_low_cost_meal %>% filter(group=='12-13 years') %>% pull(monthly_cost)) ,
+                     as.numeric(usda_low_cost_meal %>% filter(group=='14-18 years') %>% pull(monthly_cost)) )) )
+
+
+#ADJUSTMENTS
+#AVERAGE MEAL COST IN THE UNITED STATES: $3.25. Source: Feeding America for 2020
+meal_avg_cost_us <- 3.25
+#cost for county
+#https://map.feedingamerica.org/county/2020/overall/district-of-columbia reference
+meal_avg_cost_county_va <- 4.16
+
+#adjustment
+adj_food_cost <- meal_avg_cost_county_va /meal_avg_cost_us
+#food inflation - BLS to adjust meal cost from 2020
+inflation_usa_food_2021 <- 0.065
+inflation_usa_food_2022 <- 0.118
+inflation_msa_mdv_food_2021 <- 0.057
+inflation_msa_mdv_food_2022 <- 0.087
+
+#adjustment + inflation_food adjustment
+adj_food_cost_inf <- meal_avg_cost_county_va/meal_avg_cost_us*(1+inflation_msa_mdv_food_2021)*(1+inflation_msa_mdv_food_2022)/((1+inflation_usa_food_2021)*(1+inflation_usa_food_2022))
+
+#food cost adjusted by geography (county) and by inflation
+food_cost_general_adj_infl <- adj_food_cost_inf*food_cost_general
+
+
+#vector of per person cost - food
+vector_food_cost <- data.frame(cost_pc = t(food_cost_general_adj_infl))
+vector_food_cost <- tibble::rownames_to_column(vector_food_cost, "person")
+
+#food cost long format
+food_cost_long <- dat_hlb  %>% select(puma, serial, hh_income_cat, hh_size_recode, no_adult, no_preschooler, no_toddler, no_schooler, no_teenager, no_infant ) %>% arrange(serial) %>% pivot_longer(cols=c('no_adult', 'no_preschooler', 'no_toddler', 'no_schooler', 'no_teenager', 'no_infant'),
+                    names_to='person',
+                    values_to='num_person') %>% left_join(vector_food_cost, by = "person") %>% mutate(adj_econ_scales = case_when( 
+                      hh_size_recode == 1 ~ 1 + 0.2, 
+                      hh_size_recode == 2 ~ 1 + 0.1,
+                      hh_size_recode == 3 ~ 1 + 0.05,
+                      hh_size_recode == 4 ~ 1 + 0,
+                      hh_size_recode == 5 ~ 1 - 0.05)
+                      ) %>% mutate(food_cost_month = num_person*cost_pc*adj_econ_scales)
+
+#food cost
+food_hlb <- food_cost_long %>% group_by(serial) %>% summarise(food_cost_month = sum(food_cost_month))
+
+```
+
+# Childcare Cost
+```{r}
+#data -  Dept of Labor
+childcare_dol <- read_excel("~/Documents/food_insecurity/data/household_living_budget/childcare/dmv_dol_childcare_costs_2022.xlsx")
+#data county
+childcare_dol_county <- childcare_dol %>% filter(year==2022) %>% filter(FIPS == county_fips) %>%
+  select("name_county", "FIPS", "year", "infant_family", "toddler_family", "preschooler_family", "schooler_family" )
+
+
+#weekly cost
+cc_cost_indiv_min <- c(
+adult= 0, 
+infant= childcare_dol_county %>% pull(infant_family),
+toddler= childcare_dol_county %>% pull(toddler_family),
+preschooler= childcare_dol_county %>% pull(preschooler_family),
+schooler= childcare_dol_county %>% pull(schooler_family),
+teenager=0) 
+
+
+# cost of child care per representative family - min - per month
+childcare_hlb <-  dat_hlb %>% mutate(childcare_cost_month= 
+                                                         as.numeric(cc_cost_indiv_min['adult'])*no_adult*4  +
+                                                         as.numeric(cc_cost_indiv_min['teenager'])*no_teenager*4 +
+                                                         as.numeric(cc_cost_indiv_min['schooler'])*no_schooler*4 +
+                                                         as.numeric(cc_cost_indiv_min['preschooler'])*no_preschooler*4 +
+                                                         as.numeric(cc_cost_indiv_min['toddler'])*no_toddler*4 +
+                                                         as.numeric(cc_cost_indiv_min['infant'])*no_infant*4
+                                                         ) %>% select(serial, childcare_cost_month )
+
+```
+
+# Housing Cost 
+```{r}
+#data fro HUD
+housing_cost_updated <- read_excel("~/Documents/food_insecurity/data/household_living_budget/housing/dc_tr_hud_2022_housing_cost.xlsx") 
+
+housing_cost_updated <- housing_cost_updated %>% mutate(fips=substr(geoid,1,5)) %>% filter(fips %in% county_fips )
+
+housing_cost_updated_wide <- spread(housing_cost_updated, key = measure, value = value)
+
+housing_cost_county <- housing_cost_updated_wide %>% mutate(
+  `1` =  monthly_rent_0br,
+  `2` =  monthly_rent_1br,
+  `3` =  monthly_rent_2br,
+  `4` =  monthly_rent_3br,
+  `5` =  monthly_rent_4br
+  ) %>% select( -c(monthly_rent_0br,monthly_rent_1br,monthly_rent_2br,monthly_rent_3br,monthly_rent_4br, measure_type, region_type, region_name, year, fips) )
+
+
+#housing cost in long format
+housing_cost_long <- housing_cost_county %>% pivot_longer(cols=c(`1` ,  `2`  , `3` ,  `4` ,  `5`),
+                    names_to='hh_size_recode',
+                    values_to='housing_cost_month') %>% mutate(tract= substr(geoid, 6, 11))
+
+#join to match housing by place (tract) and household size
+dat_hlb$tract <- as.character(dat_hlb$tract)
+dat_hlb$hh_size_recode <- as.character(dat_hlb$hh_size_recode)
+
+#food cost per household (serial)
+housing_hlb <- dat_hlb %>% left_join(housing_cost_long, by = c("tract", "hh_size_recode")) %>% select(serial, housing_cost_month)
+
+```
+
+# Cost of Transportation
+```{r}
+#original data from CNT
+
+htaindex2020_data_tracts <- read_csv("~/Documents/food_insecurity/data/household_living_budget/transportation/htaindex2020_data_tracts_11.zip")
+
+#remove " from geoid
+htaindex2020_data_tracts$tract <- gsub( '\\"' ,'', htaindex2020_data_tracts$tract )
+
+
+#create fips code
+htaindex2020_data_tracts$fips <- substr(htaindex2020_data_tracts$tract, 1, 5)
+#filter by county and relevant data (data by year)
+transp_cost_county <- htaindex2020_data_tracts %>% filter(fips == county_fips) %>% select(geoid = tract, t_cost_ami)
+#cost estimate per person: National Typical Household: 
+#we are assuming 2.62 as average size in order to account for individual cost
+#adjustment to 2022: https://data.bts.gov/stories/s/Transportation-and-Inflation/f9jm-cqwe#
+cpi_transpor2020 <- 112.9 #june
+cpi_transpor2022 <- 134.9 #june 
+transp_cost_county <- transp_cost_county %>% mutate(transp_cost_person = t_cost_ami/2.72/12*cpi_transpor2022/cpi_transpor2020, 
+                                                    tract = substr(geoid, 6, 11) )
+
+#total estimation
+transportation_hlb_init <- dat_hlb %>% left_join(transp_cost_county, by = c("tract")) %>% mutate(transp_cost_month = transp_cost_person*no_adult ) 
+
+#transportation cost for every household
+transportation_hlb <- transportation_hlb_init %>% select(serial, transp_cost_month)
+
+#lab
+#transportation_hlb_na <- transportation_hlb_init %>% filter(is.na(trasp_cost_mont))
+
+```
+#Broadband cost 
+```{r}
+#data
+dat_broadband <- read.csv("~/Documents/food_insecurity/data/household_living_budget/broadband/dcmdva_hdcttrbg_2021_broadband_now_internet_package_price.csv.xz")
+
+#county id
+dat_broadband$county <- substr(dat_broadband$geoid,1,5)
+
+library(dplyr)
+#use min price 25
+bband_county_tr <- dat_broadband %>% filter(county %in% county_fips) %>% filter(region_type =='tract') %>% filter(measure=="min_price_25")
+
+#price increase escenario
+price_increase_wireless_service <- 0  #0.013
+
+#price per tract
+bband_tract <- bband_county_tr %>% mutate(broadband_cost_month = value*(1+price_increase_wireless_service)) %>% select(geoid, broadband_cost_month) %>% mutate(tract= substr(geoid, 6, 11))
+
+#prices all tracts
+tracts_county <- data.frame( tract = unique(dat_hlb$tract) )
+bband_tract_prices <- tracts_county %>% left_join(bband_tract, by = "tract")
+
+#fill NAs with value close to the tract
+#library(tidyr)
+bband_tract_prices <- fill(bband_tract_prices, broadband_cost_month, .direction = 'up')
+bband_tract_prices <- bband_tract_prices %>% select(tract, broadband_cost_month)
+#estimation
+broadband_hlb_init <- dat_hlb %>% left_join(bband_tract_prices, by = "tract")
+
+#broadband cost for every household
+broadband_hlb <- broadband_hlb_init %>% select(serial, broadband_cost_month)
+
+```
+
+
+#Merge with df_hlb
+```{r}
+
+#food cost
+df_hlb6 <-  dat_hlb %>% left_join(food_hlb %>% select(serial, food_cost_month) , by = 'serial')
+
+#childcare
+df_hlb6 <- df_hlb6 %>% left_join( as.data.frame(childcare_hlb) %>% select(serial, childcare_cost_month) , by = 'serial') 
+
+#housing
+df_hlb6 <- df_hlb6 %>% left_join( housing_hlb , by = 'serial')
+
+#transportation
+df_hlb6 <- df_hlb6 %>% left_join( transportation_hlb , by = 'serial')
+
+#broadband
+df_hlb6 <- df_hlb6 %>% left_join( broadband_hlb , by = 'serial')
+
+#other costs
+percentage_other_expenses <- 0.2
+df_hlb6 <- df_hlb6 %>% mutate(other_costs_month = (food_cost_month+housing_cost_month)*percentage_other_expenses ) 
+
+#formats
+df_hlb6$serialno <- as.factor(df_hlb6$serialno)
+df_hlb6$hh_comb <- as.factor(df_hlb6$hh_comb)
+```
+
+
+#  ######################## 3 Data set  ########################
+
+# Save data set of HLB with information of census tracts, income category and household combinations
+# With this file, proceed to sample to create the synthetic population
+```{r}
+
+#save file in 
+if(!file.exists( paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_hlb6_2021.csv") )){
+  
+  write.csv(df_hlb6, paste0("~/Documents/food_insecurity/documents/products/derived_variables/", name_files, "_hlb6_2021.csv") , row.names = FALSE)
+}
+
+```
