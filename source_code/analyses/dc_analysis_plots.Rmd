@@ -1,0 +1,758 @@
+---
+title: "Analysis Food Insecurity HLB"
+author: "cm"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#start fresh
+```{r}
+rm( list = ls()  )
+```
+
+#library
+```{r}
+library(readr)
+library(dplyr)
+library(janitor)
+library(ggplot2)
+library(viridis)
+library(ggplot2)
+library(plotly)
+library(ggrepel)
+library(data.table)
+library(cowplot)
+library(tidyr)
+```
+
+
+# Place name
+```{r}
+county_name <- "Washington DC"
+```
+
+# Data
+```{r}
+#File produced by dc_food_insecurity.Rmd
+
+data_fi <- read.csv("~/Documents/food_insecurity/documents/products/derived_variables/dc_food_insecurity_2022.csv")
+```
+
+
+#Analysis by hh combination
+```{r}
+
+#DF summarizing - by Household Combination and Category of Food insecurity
+
+df_hh_combination  <- dcast(data_fi,
+                hh_comb ~ cat_fi ) %>% mutate( total_hh = `food secure`+ `medium food insecure` + `partially food insecure`+  `severely food insecure`, 
+                                               food_insecure_hh = `medium food insecure` + `partially food insecure`+  `severely food insecure`,
+                                               fi_pct = (`medium food insecure`+ `partially food insecure`+  `severely food insecure`)/total_hh*100,
+                                               fi_severe_pct = (`severely food insecure`)/total_hh*100,
+                                               singleparent = substr(hh_comb, 1,1), 
+                                               nchar = nchar(hh_comb),
+                                               id_single_p_init = ifelse(singleparent == 1 & nchar == 6, 1, 0),
+                                               id_single_p = ifelse(hh_comb == 100000, 0, id_single_p_init)) %>%  arrange(-fi_pct)
+
+
+
+
+#Plot number hh and food insecurity - All cases
+#library(gapminder)
+options(scipen = 999)
+
+df_hh_combination$hh_comb <- as.character(df_hh_combination$hh_comb)
+#plot
+plot_all <- df_hh_combination %>%
+  ggplot( aes(log(total_hh), fi_pct, color= as.factor(id_single_p), label = hh_comb)) +
+  geom_point() + 
+  geom_text_repel(aes(label = hh_comb), size = 2) +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(name = "Family Type", 
+                     values = c("black", "#E69F00"),
+                     labels = c('Others', 'Single Parent Family')) +
+  labs(title = "Number of Households and Food Insecurity in Washington DC", 
+       x = "Number of households (log)",
+       y = "Percentage facing Food Insecurity")
+
+plot_all
+
+
+#list only families WITH children 
+list_no_children <- c(10000, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000)
+
+#df - Food Insecurity (FI) with Children
+data_plot_hh_children <- df_hh_combination %>% filter(!hh_comb %in%  list_no_children) 
+
+#### Food Insecurity - Percentage and number
+plot_hh_children <- data_plot_hh_children %>% 
+  ggplot( aes(food_insecure_hh, fi_pct, color= as.factor(id_single_p), label = hh_comb)) +
+  geom_point(size=2) + 
+  geom_text_repel(aes(label = hh_comb), size = 2) +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(name = "Family Type", 
+                     values = c("black", "#D96F18"),
+                     labels = c('Others', 'Single Parent Family')) +
+  labs(title = "Food Insecurity for Households with Children in Washington DC", 
+       subtitle = "Filled circles represent a household combination.",
+       x = "Number of households with Severe Food Insecurity",
+       y = "Percentage facing Food Insecurity", position = 'center') +
+  theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
+        plot.subtitle=element_text(size=9, hjust=0.5),
+        #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5), 
+        axis.text.x=element_text(size=9 ), #, vjust=5.0),
+        axis.text.y=element_text(size=9), #, hjust=1.5), 
+        axis.title.y=element_text(size=11),
+        axis.title.x=element_text(size=11, vjust=-3),
+        legend.position="bottom")
+
+#Add low capture
+plot_fi_children <-  ggdraw(add_sub(plot_hh_children, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations excluded: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8))
+
+
+
+#### Severe Food Insecurity - Percentage and number
+
+plot_hh_children_severe <- data_plot_hh_children %>% 
+  ggplot( aes(`severely food insecure`, fi_severe_pct, color= as.factor(id_single_p), label = hh_comb)) +
+  geom_point(size=2) + 
+  geom_text_repel(aes(label = hh_comb), size = 2) +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(name = "Family Type", 
+                     values = c("black", "#D96F18"),
+                     labels = c('Others', 'Single Parent Family')) +
+  labs(title = "Severe Food Insecurity for Households with Children in Washington DC",
+       subtitle = "Filled circles represent a household combination.",
+       x = "Number of households with Severe Food Insecurity",
+       y = "Percentage facing Severe Food Insecurity", position = 'center') +
+  theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
+        plot.subtitle=element_text(size=9, hjust=0.5),
+        #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5), 
+        axis.text.x=element_text(size=9 ), #, vjust=5.0),
+        axis.text.y=element_text(size=9), #, hjust=1.5), 
+        axis.title.y=element_text(size=11),
+        axis.title.x=element_text(size=11, vjust=-3),
+        legend.position="bottom")
+
+
+plot_fi_children_severe <-  ggdraw(add_sub(plot_hh_children_severe, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations excluded: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8))
+
+
+####  Food Insecurity - Percentage and number - households without children #####
+#df
+data_plot_hh_no_children_init <- df_hh_combination %>% filter(hh_comb %in%  list_no_children) %>% filter(hh_comb !=  10000)
+
+#Reshape informaton
+data_plot_hh_no_children_wide <- data_plot_hh_no_children_init %>% select(hh_comb, `severely food insecure`, food_insecure_hh, fi_pct,        fi_severe_pct) 
+
+#reshape data for plot in groups 
+data_plot_hh_no_children <- reshape(data_plot_hh_no_children_wide, direction='long', 
+        varying=c('severely food insecure', 'fi_severe_pct', 'food_insecure_hh', 'fi_pct'        ), 
+        timevar='status',
+        times=c('severely food insecure', 'food insecure'),
+        v.names=c('number', 'proportion'),
+        idvar='hh_comb')
+
+
+#### Food Insecurity - Percentage and number - No Children JOINT
+plot_hh_no_children <- data_plot_hh_no_children %>% 
+  ggplot( aes(number, proportion, label = hh_comb, color = as.factor(status)) ) +
+  geom_point(size=3, pch = 21, color = "black", aes(fill=factor(status) )  ) + 
+   scale_fill_manual(values = c("food insecure" = "black", "severely food insecure" = "#FF8E32"), name = "Status") +
+  geom_text_repel(aes(label = hh_comb), size = 2, color = "black") +
+ 
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  labs(title = "Food Insecurity for Households Without Children in Washington DC", 
+       subtitle = "Filled circles represent a household combination.",
+       x = "Number of Households With Food Insecurity",
+       y = "Percentage Facing Food Insecurity" , position = 'center'
+        ) +
+  theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
+        plot.subtitle=element_text(size=9, hjust=0.5),
+        #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5), 
+        axis.text.x=element_text(size=9 ), #, vjust=5.0),
+        axis.text.y=element_text(size=9), #, hjust=1.5), 
+        axis.title.y=element_text(size=11),
+        axis.title.x=element_text(size=11, vjust=-3),
+        legend.position="bottom")
+
+#add annotation
+plot_fi_nochildren <- ggdraw(add_sub(plot_hh_no_children, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations included: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8))
+
+
+#Plot
+plot_fi_children
+plot_fi_children_severe
+plot_fi_nochildren
+
+#interactive plot
+#ggplotly(p)
+  
+```
+
+#Plot - food insecure and severe food insecure
+```{r}
+library(tidyr)
+df_fi_hh_com <- df_hh_combination %>% filter(!hh_comb %in% c("10000", "20000", "11000")) %>% select(hh_comb, fi_pct, fi_severe_pct, id_single_p)
+
+df_fi_hh_com_long <- df_fi_hh_com %>% select(hh_comb, fi_pct, fi_severe_pct, id_single_p) %>% pivot_longer(
+  cols = c(fi_pct, fi_severe_pct), 
+  names_to = c("status"), 
+  values_to = "percentage")
+
+#df_fi_hh_com <- df_fi_hh_com %>% filter(!hh_comb %in% c("10000", "20000", "11000"))
+
+#df_finsecure <- data_fi %>% filter(food_insecurity_status == "food insecure")
+
+df_fi_hh_com_long$hh_comb <- factor(df_fi_hh_com_long$hh_comb)
+df_fi_hh_com_long$id_single_p <- factor(df_fi_hh_com_long$id_single_p)
+df_fi_hh_com_long$status <- factor(df_fi_hh_com_long$status)
+
+
+palette_cat_fi <- c("partially food insecure"="#51C3CC",
+                    "medium food insecure"="#FFE5CC", 
+                    "severely food insecure"="#FF8E32"
+                    ) 
+
+palette_cat_fam <- c("0"="#51C3CC",
+                    "1"="#FF8E32"
+                    ) 
+
+
+
+#boxplot
+# ggplot(df_fi_hh_com, aes(x= 1, y= fi_pct, fill= fi_pct)) +
+#  geom_boxplot(aes(x= 1, y= fi_pct), outlier.shape=NA, 
+#                fill="white", colour="black", varwidth = 10) + 
+#   geom_jitter(aes(x= 1, y= fi_pct, fill= fi_pct), 
+#               width=0.10, pch=21, colour="black", cex=1.25) 
+
+
+labels_x <- c("Food Insecurity", "Severe Food Insecurity")
+
+#boxplot by hh_comb
+ggplot(df_fi_hh_com_long, aes(x= status, y= percentage, fill= id_single_p)) +
+ geom_boxplot(aes(x= status, y= percentage), 
+               fill="white", colour="black") + 
+  geom_jitter(aes(x= status, y= percentage, fill= id_single_p), 
+              width=0.30, pch=21, colour="black", cex= 1.8) +
+  scale_fill_manual(values=palette_cat_fam, labels=c( 'Other families', 'Single Parent Families')) +
+  labs(title= paste0("Food Insecurity for Household combinations in ", county_name),
+        x ="", y = "Percentage", fill = "Family Type") + 
+  scale_x_discrete(labels= labels_x)  
+  
+
+```
+
+
+# hh_comb and tract
+
+```{r}
+#selection of cases: only single parent households
+cases <- data_fi_insecure %>% filter(no_adult == 1) 
+length(unique(cases$hh_comb))
+
+cases_1 <- data.frame( table(cases$hh_comb) ) %>% filter( Var1 != 100000 ) %>% arrange(-Freq)  #ignore 100000
+
+unique_cases <- cases_1 %>% select(Var1) %>% head(10)
+
+unique_cases_list <- c( as.character(unique_cases$Var1) )
+unique_cases_list <- as.numeric(unique_cases_list)
+
+#geographies
+tract_2020_to_PUMA_2010 <- read_csv("~/Documents/crosswalks/questions_vl/2020_tract_to_2010_PUMA.csv")
+
+# get configuration of new pumas 2020
+tract_2020_to_PUMA_2010$GEOID_TRACT_20 <- as.character(tract_2020_to_PUMA_2010$GEOID_TRACT_20)
+
+unique_cases_list <- c(101011, 101020, 101101, 101200, 102010, 102100, 103000, 110101, 111010, 112000, 120010, 120100, 121000, 130000)
+
+#data for plot
+dat <- data_fi_insecure %>% filter(hh_comb %in% unique_cases_list) %>% select(tract, hh_comb, ratio_incomeres_food ) %>% 
+  mutate(geoid = paste0(11001, tract) ) %>% 
+  left_join(tract_2020_to_PUMA_2010 %>% select(geoid=GEOID_TRACT_20, PUMA5CE_20), by = "geoid" )
+
+
+#plot
+dat$hh_comb <- as.factor(dat$hh_comb)
+dat$PUMA5CE_20 <- as.factor(dat$PUMA5CE_20)
+
+palette_puma <- c("101"="#51C3CC", 
+                  "102"="#99F9FF",
+                  "103"="#E5FFFF", 
+                  "104"="#FFE5CC",                         
+                  "105"="#FFAD65", 
+                  "106"="#FF8E32")
+
+
+plot_hh <- ggplot(dat, aes(x= hh_comb, y= ratio_incomeres_food, fill = PUMA5CE_20 )) +
+ geom_boxplot(aes(x= hh_comb, y= ratio_incomeres_food), outlier.shape=NA,
+               fill="white", colour="black") +
+  geom_jitter(aes(x= hh_comb, y= ratio_incomeres_food, fill = PUMA5CE_20),
+              width=0.30, pch=21, colour="black", cex= 1.25) +
+  scale_x_discrete(limits = factor(unique_cases_list) ) +
+  labs(title= paste0("Food Insecure Households in Washington DC \nHousehold Combinations of 4:3 (1 Adult/3 Children) "), 
+       subtitle = "Filled circles identify the PUMA the household is located in.",
+        # x ="Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant", 
+       y = "\n\n Residual Income/Food Cost (Ratio)",
+       x = ""
+       ) +
+  theme(legend.position="none") +
+  scale_fill_manual(values=palette_puma) +
+  theme_minimal() + 
+  theme(legend.position = "none") 
+
+plot_hh
+
+
+```
+
+
+# ##########################################################################################
+# ##########################################################################################
+
+#Geographical Analysis - PUMAS 
+```{r}
+library(tigris)
+library(maps)
+library(sp)
+library(leaflet)
+library(sf)
+library(reshape2)
+
+
+#by puma - food insecurity 
+df_fi_puma  <- dcast(data_fi,
+                puma ~ cat_fi ) %>% mutate( total_hh = `food secure`+ `medium food insecure`+ `partially food insecure`+  `severely food insecure`, 
+                                            fi_pct = (`medium food insecure`+ `partially food insecure`+  `severely food insecure`)/total_hh) %>% 
+  arrange(-fi_pct)
+
+#geographies pumas
+pumas_dc <- pumas(state = 'DC', cb = TRUE, year = 2019, class = "sf") %>% mutate(puma = paste0(0,PUMACE10)) %>% select(puma, NAME10, geometry)
+
+#state geographies
+pumas_dc <- st_transform(pumas_dc, 4326 )
+
+df_fi_puma$puma <- paste0("000",df_fi_puma$puma)
+df_fi_puma$puma <- as.character(df_fi_puma$puma)
+
+#join
+df_fi_puma_sf <- pumas_dc  %>% left_join(df_fi_puma, by = "puma")
+
+#color pallette
+pal <- colorBin("RdYlBu", df_fi_puma_sf$fi_pct)
+
+#map pumas
+leaflet(df_fi_puma_sf) %>%
+  addTiles()  %>%
+  addPolygons(
+    fillColor = pal(df_fi_puma_sf$fi_pct),
+    stroke=TRUE,
+    fillOpacity = 0.9,
+    #color="white",
+    weight=0.3
+  ) %>%
+  addLegend( pal=pal, values= df_fi_puma_sf$fi_pct, opacity=0.9, title = "Food Insecurity - Percentage", position = "bottomleft" )
+
+
+```
+
+
+#Results census tracts
+```{r}
+library(tigris)
+library(maps)
+library(sp)
+library(leaflet)
+library(sf)
+
+
+#by puma - food insecurity 
+df_fi_tracts  <- dcast(data_fi,
+                tract ~ cat_fi ) %>% mutate( total_hh = `food secure`+`medium food insecure`+ `partially food insecure`+  `severely food insecure`, 
+                                            fi_pct = (`medium food insecure`+ `partially food insecure`+  `severely food insecure`)/total_hh, 
+                                            charac = nchar(tract),
+                                            geoid = case_when( charac == 3  ~ paste0(11001000, tract),
+                                                               charac == 4  ~ paste0(1100100, tract),
+                                                               charac == 5  ~ paste0(110010, tract)
+                                                               
+                                              ) , 
+                                            fi_pct_severe = `severely food insecure`/total_hh, 
+                                            charac2 = nchar(geoid)
+                                              ) %>% 
+  arrange(-fi_pct)
+
+```
+
+
+
+
+
+
+
+# PAlette
+```{r}
+library(ggrepel)
+#install.packages("BAMMtools")
+#library(BAMMtools)
+library(tidycensus)
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(scales)
+library(Rttf2pt1)
+options(tigris_use_cache=TRUE)
+library(leaflet)
+#install.packages("leaflegend")
+library(leaflegend)
+
+#Set the color palette for 7 categories
+# SEQ<-c("#F9F1CB","#4E5827")
+# SEQolive<-colorRampPalette(SEQ)(42)
+# show_col(SEQolive)
+# show_col(SEQolive[c(1,7,14,21,28,35,42)])
+# SEQ_OLIVE<-SEQolive[c(1,7,14,21,28,35,42)]; show_col(SEQ_OLIVE)
+
+#Set the color palette for 7 categories
+SEQ<-c("#F9F1CB","#D55E00")
+SEQorange<-colorRampPalette(SEQ)(42)
+show_col(SEQorange)
+#show_col(SEQorange[c(1,7,14,21,28,35,42)])
+show_col(SEQorange[seq(1,40,4)])
+
+SEQ_orange<-SEQorange[seq(1,40,4)]; show_col(SEQ_orange)
+
+```
+
+
+
+#Maps census tracts - old - del
+
+```{r}
+
+#geographies pumas
+tracts_dc <- tracts(state = 'DC', cb = TRUE, year = 2020, class = "sf") %>% select(geoid=GEOID, NAMELSAD, geometry)
+
+#state geographies
+tracts_dc <- st_transform(tracts_dc, 4326 )
+
+#join
+df_fi_tracts_plot <- tracts_dc    %>% left_join(df_fi_tracts, by = "geoid" )
+#df_fi_tracts_plot <- df_fi_tracts   %>% left_join(tracts_dc, by = c("geoid") )
+
+df_fi_tracts_sf <- st_transform(df_fi_tracts_plot, 4326 ) 
+
+```
+
+#pumas 2020
+```{r}
+
+tract_2020_to_PUMA_2010 <- read_csv("~/Documents/crosswalks/questions_vl/2020_tract_to_2010_PUMA.csv")
+
+# get configuration of new pumas 2020
+tract_2020_to_PUMA_2010$GEOID_TRACT_20 <- as.character(tract_2020_to_PUMA_2010$GEOID_TRACT_20)
+
+geo_dc_tracts <- df_fi_tracts_sf %>% left_join(tract_2020_to_PUMA_2010 %>% select(GEOID_TRACT_20, PUMA5CE_20), by = c("geoid"="GEOID_TRACT_20"))
+
+#STOP 
+geo_dc_puma_20 <- geo_dc_tracts %>% select(PUMA5CE_20, geometry) %>% group_by(PUMA5CE_20) %>% summarise(num= n() )
+
+#state geographies
+geo_dc_puma_20 <- st_transform(geo_dc_puma_20, 4326 )
+
+#data ############
+#by puma - food insecurity 
+#data with puma - join left
+data_fi_20 <- data_fi %>% mutate( charac = nchar(tract),
+                                  geoid = case_when( charac == 3  ~ paste0(11001000, tract),
+                                                     charac == 4  ~ paste0(1100100, tract),
+                                                     charac == 5  ~ paste0(110010, tract),
+                                  ),
+                                  charac2 = nchar(geoid)
+                                  ) %>% left_join(tract_2020_to_PUMA_2010 %>% 
+                                                    select(geoid=GEOID_TRACT_20, PUMA5CE_20), by = "geoid" )
+
+#
+df_fi_puma_20  <- dcast(data_fi_20,
+                PUMA5CE_20 ~ cat_fi ) %>% mutate( total_hh = `food secure`+`medium food insecure`+ `partially food insecure`+  `severely food insecure`, 
+                                            fi_pct = (`medium food insecure`+ `partially food insecure`+  `severely food insecure`)/total_hh) %>% 
+  arrange(-fi_pct) 
+
+###########
+  
+  
+#join
+df_fi_puma_20_sf <- geo_dc_puma_20  %>% left_join(df_fi_puma_20, by = "PUMA5CE_20")
+
+#color pallette
+pal <- colorBin("RdYlBu", df_fi_puma_20$fi_pct)
+
+
+
+#map pumas
+leaflet(df_fi_puma_20_sf) %>% 
+  addTiles()  %>% 
+  addPolygons( 
+    fillColor = pal(df_fi_puma_20_sf$fi_pct), 
+    stroke=TRUE, 
+    fillOpacity = 0.9, 
+    color="black", 
+    weight=0.5
+  ) %>%
+  addLegend( pal=pal, values= df_fi_puma_20_sf$fi_pct, opacity=0.9, title = "Food Insecurity - Percentage", position = "bottomleft" )
+
+
+
+```
+
+
+#simply puma map with palette
+```{r}
+
+palette_puma <- c("101"="#51C3CC", 
+                  "102"="#99F9FF",
+                  "103"="#E5FFFF", 
+                  "104"="#FFCA99",                         
+                  "105"="#FFAD65", 
+                  "106"="#FF8E32")
+
+palette_puma_gen <- c("#51C3CC", 
+                  "#99F9FF",
+                  "#E5FFFF", 
+                  "#FFE5CC",                         
+                  "#FFAD65", 
+                  "#FF8E32")
+
+
+#map pumas standard palette
+leaflet(df_fi_puma_20_sf) %>% 
+  addTiles()  %>% 
+  addPolygons( 
+    #fillColor =  pal(df_fi_puma_20$fi_pct), #palette_puma, 
+    stroke=TRUE, 
+    fillOpacity = 0.9, 
+    color= palette_puma_gen, 
+    weight=0.5
+  ) 
+
+```
+
+
+#Map Census tract -  food insecurity - standard palette
+```{r}
+library(RColorBrewer)
+#mybins <- c(0,10,20,50,100,500,Inf)
+mybins <- seq(0,1, 0.1)
+
+#mypalette <- colorBin( palette="YlOrBr", domain=world_spdf@data$POP2005, na.color="transparent", bins=mybins)
+mypalette <- colorBin( palette="YlOrRd", domain= df_fi_tracts_sf$fi_pct, na.color="transparent", bins=mybins)
+
+#Final Map
+leaflet(df_fi_tracts_sf) %>% 
+  #addTiles()  %>% 
+  addPolygons( 
+    fillColor = ~mypalette(fi_pct), 
+    stroke=TRUE, 
+    fillOpacity = 0.9, 
+    color="black", 
+    weight=0.3  
+  ) %>%
+  addLegend( pal=mypalette, values=~fi_pct, opacity=0.9, title = "Proportion", position = "bottomleft", labFormat =  ) 
+
+# %>%
+#   addScaleBar(position = "bottomleft", options = scaleBarOptions(maxWidth = 80))
+
+
+```
+
+#Map Census tract -  severe food insecurity - standard palette
+```{r}
+library(RColorBrewer)
+#mybins <- c(0,10,20,50,100,500,Inf)
+mybins <- seq(0,1, 0.1)
+
+#mypalette <- colorBin( palette="YlOrBr", domain=world_spdf@data$POP2005, na.color="transparent", bins=mybins)
+mypalette <- colorBin( palette="YlOrRd", domain= df_fi_tracts_sf$fi_pct_severe, na.color="transparent", bins=mybins)
+
+#Final Map
+leaflet(df_fi_tracts_sf) %>% 
+  #addTiles()  %>% 
+  addPolygons( 
+    fillColor = ~mypalette(fi_pct_severe), 
+    stroke=TRUE, 
+    fillOpacity = 0.9, 
+    color="black", 
+    weight=0.3  
+  ) %>%
+  addLegend( pal=mypalette, values=~fi_pct_severe, opacity=0.9, title = "Proportion", position = "bottomleft", labFormat =  ) 
+
+
+# %>%
+#   addScaleBar(position = "bottomleft", options = scaleBarOptions(maxWidth = 80))
+
+
+
+```
+
+
+#Where are these households?  the case of 101000 - Map - not included in analysis
+```{r}
+
+df_fi_101000 <- data_fi_20 %>% filter(hh_comb == 101000) %>% filter(food_insecurity_status == "food insecure")
+df_fi_101000_tract <- df_fi_101000 %>% group_by(geoid) %>% summarise(num = n())
+
+#geographies
+tracts_dc <- tracts(state = 'DC', cb = TRUE, year = 2021, class = "sf") %>% select(GEOID, NAMELSAD, geometry)
+#state geographies
+tracts_dc <- st_transform(tracts_dc, 4326 )
+
+#join
+df_fi_101000_tract <- tracts_dc  %>% left_join(df_fi_101000_tract, by = c("GEOID"="geoid") ) %>% filter( !is.na(num))
+
+library(RColorBrewer)
+#mybins <- c(0,10,20,50,100,500,Inf)
+#mybins <- seq(0,1, 0.1)
+mybins <- seq(min(df_fi_101000_tract$num), max(df_fi_101000_tract$num), round( (max(df_fi_101000_tract$num) - min(df_fi_101000_tract$num) )/10 , 0 ) )
+
+#mypalette <- colorBin( palette="YlOrBr", domain=world_spdf@data$POP2005, na.color="transparent", bins=mybins)
+mypalette <- colorBin( palette="YlOrRd", domain= df_fi_101000_tract$num, na.color="transparent", bins=mybins)
+
+#Final Map
+leaflet(df_fi_101000_tract) %>%
+  addTiles()  %>%
+  addPolygons(
+    fillColor = ~mypalette(num),
+    stroke=TRUE,
+    fillOpacity = 0.9,
+    color="black",
+    weight=0.3, 
+    
+  ) %>%
+  addLegend( pal=mypalette, values=~num, opacity=0.9, title = "No. Households", position = "bottomleft", labFormat =  )
+
+```
+
+
+
+
+# Final Plot - std and range
+
+```{r}
+library(ggpubr) 
+
+#food insecure
+
+#data for food insecure with the identification of children and no children
+food_insec_children_id  <- data_fi_insecure %>% 
+  mutate( digits = nchar(hh_comb), 
+          num_children = no_teenager + no_schooler+ no_preschooler + no_toddler + no_infant) %>% 
+  filter( digits == 6)
+
+number_top <- 40
+
+#largest hh_comb of food insecure with children
+#hh_80_child <- food_insec_hh_comb_children %>% head(number_top) %>% pull(hh_comb)
+
+
+#final plot
+
+#with hh_comb
+#plot with std deviation
+ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= reorder( as.factor(hh_comb), avg_ratio, FUN= mean ) , y= avg_ratio ))  + 
+# ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= as.factor(hh_comb), y=avg_ratio)) + 
+  geom_errorbar(aes(ymin=avg_ratio-sd_ratio, ymax=avg_ratio+sd_ratio), width=0 ,
+                 position=position_dodge(.9), color = "#EDD29C", cex = 2) + 
+  geom_point(stat="identity", color="black", cex = 2, pch = 21, fill = "#6FB2E4",
+           position=position_dodge()) +
+  coord_flip() + 
+  theme_bw() +
+  labs(y=" Food Coverage Ratio", 
+       x = "Household compositions (40 largest)" ) +
+  theme(
+  axis.title.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10), 
+  axis.text.y =element_text(size=5), 
+  panel.background=element_rect(fill="transparent"),
+        text=element_text(color="#22211d"),
+        plot.title=element_text(size=14, face="bold", hjust=0.5, vjust=-1.0),
+        plot.subtitle=element_text(size=11, hjust=0.5, vjust=-0.5),
+        plot.caption=element_text(size=9, hjust=0)
+  ) + 
+  geom_hline(yintercept=-2, linetype="dashed", color = "#911C43") +
+  geom_hline(yintercept= 0, linetype="dashed", color = "red") + 
+  geom_hline(yintercept= 1, linetype="dashed", color = "orange") +
+  annotate("text", y= -1, x="101010", label="Medium ",  size=3) +
+  annotate("text", y= 0.5, x="101010", label="Partial ",  size=3) +
+  annotate("text", y= -8, x="101010", label="Severe ",  size=3) + 
+  labs(title="Food Insecure Households in Washington DC",
+       subtitle="Blue Circle = Food Coverage Ratio Mean;\nYellow Rectangle = Food Coverage Ratio Std.Dev") 
+
+  # theme(panel.background=element_rect(fill="transparent"),
+  #       text=element_text(color="#22211d"),
+  #       plot.title=element_text(size=14, face="bold", hjust=0.5, vjust=-1.0),
+  #       plot.subtitle=element_text(size=11, hjust=0.5, vjust=-0.5),
+  #       plot.caption=element_text(size=9, hjust=0))
+
+
+
+#plot with ranges max-min
+fi_var_hh_children <- ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= reorder( as.factor(hh_comb), avg_ratio, FUN= mean ) , y= avg_ratio ))  + 
+# ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= as.factor(hh_comb), y=avg_ratio)) + 
+  geom_errorbar(aes(ymin=min_ratio, ymax=max_ratio), width=0 ,
+                 position=position_dodge(.9), color = "#EDD29C", cex = 2) + 
+  geom_point(stat="identity", color="black", cex = 2, pch = 21, fill = "#6FB2E4",
+           position= position_dodge(width = .9) ) + 
+           #position= "dodge" ) + 
+  coord_flip() + 
+  theme_bw() +
+  labs(y=" Food Coverage Ratio", 
+       x = "Household compositions (30 largest)" ) +
+  theme(
+  axis.title.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10), 
+  axis.text.y =element_text(size=5), 
+  panel.background=element_rect(fill="transparent"),
+        text=element_text(color="#22211d"),
+        plot.title=element_text(size=14, face="bold", hjust=0.5, vjust=-1.0),
+        plot.subtitle=element_text(size=11, hjust=0.5, vjust=-0.5),
+        plot.caption=element_text(size=9, hjust=0)
+  ) + 
+  geom_hline(yintercept=-2, linetype="dashed", color = "#911C43") +
+  geom_hline(yintercept= 0, linetype="dashed", color = "red") + 
+  geom_hline(yintercept= 1, linetype="dashed", color = "orange") +
+  annotate("text", y= -1, x="101010", label="Medium ",  size=3) +
+  annotate("text", y= 0.5, x="101010", label="Partial ",  size=3) +
+  annotate("text", y= -8, x="101010", label="Severe ",  size=3) + 
+  labs(title="Food Insecure Households with Children in Washington DC",
+       subtitle="Blue Circle = Food Coverage Ratio Mean;\nYellow Rectangle = Food Coverage Ratio Range") +
+  theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
+        plot.subtitle=element_text(size=9, hjust=0.5),
+        #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5),
+        axis.text.x=element_text(size=9 ), #, vjust=5.0),
+        axis.text.y=element_text(size=9), #, hjust=1.5),
+        axis.title.y=element_text(size=11),
+        axis.title.x=element_text(size=11, vjust=-3),
+        legend.position="bottom")
+
+#add annotation
+plot_fi_var_hh_children <- ggdraw(add_sub(fi_var_hh_children, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations included: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8, vjust=1.2))
+
+plot_fi_var_hh_children
+
+group_largest <- food_insec_hh_comb_children %>% head(number_top)
+
+sum(group_largest$num)
+
+
+
+###lab
+```
+

@@ -1,0 +1,159 @@
+---
+title: "Food Insecurity Determination"
+author: "cm"
+date: "2023-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Libraries
+```{r}
+library(readr)
+library(dplyr)
+library(janitor)
+library(ggplot2)
+library(viridis)
+```
+
+#start fresh
+```{r}
+rm( list = ls()  )
+```
+
+# Place name
+```{r}
+county_name <- "Washington DC"
+```
+
+#Data
+```{r}
+#url-raw info
+url_hlb <- "https://github.com/uva-bi-sdad/food_insecurity/raw/main/documents/products/derived_variables/dc_hlb_2021.csv.zip"
+
+#destination file: CHOOSE anywhere you want to download it
+destfile_synpop <- "~/Documents/food_insecurity/documents/products/derived_variables/download_dc_2021.csv.zip"
+
+#download file and save in specified destination
+download.file(url_hlb, destfile_synpop)
+
+#open csv zip
+data_hlb <- read_csv("~/Documents/food_insecurity/documents/products/derived_variables/download_dc_2021.csv.zip") 
+```
+
+#1 Food Insecurity Determination
+```{r}
+#nonfood costs per month = hlb7 (everything but food)
+data_fi <- data_hlb
+
+#temporal
+data_fi <- data_fi %>% mutate(total_taxes = ifelse(total_taxes < 0, 0, total_taxes) )
+
+#Determine Food Coverage Ratio, categories of food insecurity
+
+data_fi <- data_fi %>% mutate(cost_hlb7 = childcare_cost_month +  
+                                housing_cost_month + 
+                                transp_cost_month + 
+                                broadband_cost_month + 
+                                other_costs_month + 
+                                healthcare_cost_month +  
+                                total_taxes/12,   #taxes are annual amounts
+                              hh_income_month = hh_income/12,  #monthly income
+                              residual_income_hlb7 = hh_income_month - cost_hlb7, 
+                              food_coverage = residual_income_hlb7 - food_cost_month, 
+                              food_insecurity_status = case_when( food_coverage >= 0 ~ "food secure",
+                                                                  food_coverage < 0 ~ "food insecure"), 
+                              ratio_incomeres_food = residual_income_hlb7/food_cost_month, 
+                               cat_fi = case_when( ratio_incomeres_food >= 1 ~ "food secure",
+                                                  0 <= ratio_incomeres_food & ratio_incomeres_food < 1 ~ "partially food insecure",
+                                                  -2 <= ratio_incomeres_food & ratio_incomeres_food < 0 ~ "medium food insecure",
+                                                  ratio_incomeres_food < -2 ~ "severely food insecure",
+                                                  ), 
+                              hlb_month = hlb_year/12 , 
+                              housing_prop = housing_cost_month/hlb_month
+                              
+                              )
+
+
+```
+
+#Results
+
+```{r}
+
+#results
+food_sec_result <- data_fi %>% group_by(food_insecurity_status) %>% summarise(total_hh = n()) %>% mutate(percentage = total_hh/ sum(total_hh))
+food_sec_result
+
+#analysis from groups
+food_sec_result_cat <- data_fi %>% group_by(cat_fi) %>% summarise(total_hh = n(), 
+                                                                  avg_deficit_food = mean(food_coverage),
+                                                                  max_deficit_food = max(food_coverage),
+                                                                  min_deficit_food = min(food_coverage),
+                                                                  avg_housing_pct = mean(housing_prop)
+                                                                  ) %>% 
+  mutate(percentage = total_hh/ sum(total_hh)) 
+
+
+table_summary <- food_sec_result_cat %>% arrange( match(cat_fi, c("severely food insecure", "medium food insecure", "partially food insecure", "food secure", "highly food secure" )))
+
+library(gt)
+table_summary #%>% gt()
+
+```
+
+#Graphical Results
+```{r}
+#plot
+plot_fi <- ggplot(food_sec_result, aes(x=food_insecurity_status, y=percentage, fill= food_insecurity_status) ) + 
+  geom_bar(stat = "identity") +
+  #scale_fill_hue(c = 40) +
+  theme(legend.position="none", axis.text=element_text(size=12)) +
+  geom_text(aes(label = round(percentage,4)*100 ), vjust = -0.3) +
+  labs(title= paste0("Estimation of Food Insecurity status in ", county_name),
+        x ="", y = "Percentage") +
+  scale_fill_viridis(discrete = T) +
+  theme( panel.background = element_rect(fill = "transparent",
+                                 colour = NA_character_),
+         axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+         axis.ticks.x=element_blank())
+
+plot_fi 
+
+#categories
+plot_fi_cat <- ggplot(food_sec_result_cat, aes(x= cat_fi, y=percentage, fill= cat_fi) ) + 
+  geom_bar(stat = "identity") +
+  #scale_fill_hue(c = 40) +
+  theme(legend.position="none", axis.text=element_text(size=12)) +
+  geom_text(aes(label = round(percentage,4)*100, y = percentage + 0.04 ) ) +
+  labs(title= paste0("Estimation of Food Insecurity status in ", county_name),
+        x ="", y = "Percentage") +
+  scale_fill_viridis(discrete = T) +
+  theme( panel.background = element_rect(fill = "transparent",
+                                 colour = NA_character_),
+         #axis.text.y=element_blank(),
+         axis.ticks.y=element_blank(),
+         axis.ticks.x=element_blank()) + coord_flip()
+
+plot_fi_cat 
+
+```
+
+
+#save df
+
+```{r}
+
+write.csv(data_fi, "~/Documents/food_insecurity/documents/products/derived_variables/dc_food_insecurity_2022.csv",  row.names = FALSE)
+
+```
+
+
+
+
+
+
+
