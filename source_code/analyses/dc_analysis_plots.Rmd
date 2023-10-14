@@ -92,15 +92,19 @@ data_plot_hh_children <- df_hh_combination %>% filter(!hh_comb %in%  list_no_chi
 #### Food Insecurity - Percentage and number
 plot_hh_children <- data_plot_hh_children %>% 
   ggplot( aes(food_insecure_hh, fi_pct, color= as.factor(id_single_p), label = hh_comb)) +
-  geom_point(size=2) + 
+  #geom_point(size=2, color='black', shape=21, aes(fill=factor(id_single_p)) ) +
+
+  geom_point(color='black', shape=21, size=2, aes(fill=factor(id_single_p))) + 
+  scale_fill_manual(values=c("#818181", "#FF8E32")) + 
+
   geom_text_repel(aes(label = hh_comb), size = 2) +
   theme_bw() +
-  theme(legend.position = "bottom") +
+  #theme(legend.position = "bottom") +
   scale_color_manual(name = "Family Type", 
-                     values = c("black", "#D96F18"),
+                     values = c("#818181", "#FF8E32"),
                      labels = c('Others', 'Single Parent Family')) +
   labs(title = "Food Insecurity for Households with Children in Washington DC", 
-       subtitle = "Filled circles represent a household combination.",
+       subtitle = "Filled circles represent a household combination. \nHousehold Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant.",
        x = "Number of households with Severe Food Insecurity",
        y = "Percentage facing Food Insecurity", position = 'center') +
   theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
@@ -113,7 +117,7 @@ plot_hh_children <- data_plot_hh_children %>%
         legend.position="bottom")
 
 #Add low capture
-plot_fi_children <-  ggdraw(add_sub(plot_hh_children, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations excluded: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8))
+plot_fi_children <-  ggdraw(add_sub(plot_hh_children, "\nHousehold combinations excluded: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8))
 
 
 
@@ -121,15 +125,16 @@ plot_fi_children <-  ggdraw(add_sub(plot_hh_children, "Household Combination: Ad
 
 plot_hh_children_severe <- data_plot_hh_children %>% 
   ggplot( aes(`severely food insecure`, fi_severe_pct, color= as.factor(id_single_p), label = hh_comb)) +
-  geom_point(size=2) + 
+  geom_point(color='black', shape=21, size=2, aes(fill=factor(id_single_p))) + 
+  scale_fill_manual(values=c("#818181", "#FF8E32")) + 
   geom_text_repel(aes(label = hh_comb), size = 2) +
   theme_bw() +
-  theme(legend.position = "bottom") +
+  #theme(legend.position = "bottom") +
   scale_color_manual(name = "Family Type", 
-                     values = c("black", "#D96F18"),
+                     values = c("#818181", "#FF8E32"),
                      labels = c('Others', 'Single Parent Family')) +
   labs(title = "Severe Food Insecurity for Households with Children in Washington DC",
-       subtitle = "Filled circles represent a household combination.",
+       subtitle = "Filled circles represent a household combination. \nHousehold Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant.",
        x = "Number of households with Severe Food Insecurity",
        y = "Percentage facing Severe Food Insecurity", position = 'center') +
   theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
@@ -169,9 +174,9 @@ plot_hh_no_children <- data_plot_hh_no_children %>%
   geom_text_repel(aes(label = hh_comb), size = 2, color = "black") +
  
   theme_bw() +
-  theme(legend.position = "bottom") +
+  #theme(legend.position = "bottom") +
   labs(title = "Food Insecurity for Households Without Children in Washington DC", 
-       subtitle = "Filled circles represent a household combination.",
+       subtitle = "Filled circles represent a household combination. \nHousehold Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant.",
        x = "Number of Households With Food Insecurity",
        y = "Percentage Facing Food Insecurity" , position = 'center'
         ) +
@@ -197,6 +202,31 @@ plot_fi_nochildren
 #ggplotly(p)
   
 ```
+
+# Histogram with kernel density
+```{r}
+# Histogram with kernel density
+ggplot(data_fi_analysis %>% filter(ratio_incomeres_food <=2), aes(x = ratio_incomeres_food)) + 
+  geom_histogram(aes(y = ..density..),
+                 colour = "#C8C8C8", fill = "white",  binwidth = 1) + #bins = 25,
+  geom_density(lwd = 0.5, colour = 4,
+               fill = 4, alpha = 0.5) + 
+  geom_vline(xintercept=-2, linetype="solid", color = "#911C43", size = 0.5) +
+  geom_vline(xintercept= 0, linetype="solid", color = "red", size = 0.5) + 
+  geom_vline(xintercept= 1, linetype="solid", color = "orange", size = 0.5) +
+  # annotate("text", x= -1, y= 0.025, label= "Medium",  size=4, fontface =2) +
+  # annotate("text", x= 0.5, y=0.03, label="Partial ",  size=4, fontface =2) +
+  # annotate("text", x= -10, y=0.025, label="Severe ",  size=4, fontface =2) +
+    labs(x=" Food Coverage Ratio", 
+       y = "Frequency" ) +
+  scale_x_continuous(breaks = round(seq(-12, 2, by = 1),1)) + 
+  theme_bw() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+
+```
+
 
 #Plot - food insecure and severe food insecure
 ```{r}
@@ -548,6 +578,7 @@ leaflet(df_fi_puma_20_sf) %>%
 
 #Map Census tract -  food insecurity - standard palette
 ```{r}
+
 library(RColorBrewer)
 #mybins <- c(0,10,20,50,100,500,Inf)
 mybins <- seq(0,1, 0.1)
@@ -566,6 +597,8 @@ leaflet(df_fi_tracts_sf) %>%
     weight=0.3  
   ) %>%
   addLegend( pal=mypalette, values=~fi_pct, opacity=0.9, title = "Proportion", position = "bottomleft", labFormat =  ) 
+
+
 
 # %>%
 #   addScaleBar(position = "bottomleft", options = scaleBarOptions(maxWidth = 80))
@@ -646,9 +679,65 @@ leaflet(df_fi_101000_tract) %>%
 # Final Plot - std and range
 
 ```{r}
-library(ggpubr) 
+
 
 #food insecure
+data_fi_insecure <- data_fi %>% filter(food_insecurity_status == "food insecure")
+
+#summary stats
+food_insec_hh_comb  <- data_fi_insecure %>% 
+  mutate( digits = nchar(hh_comb), 
+          num_children = no_teenager + no_schooler+ no_preschooler + no_toddler + no_infant) %>% 
+  filter( digits == 6) %>% 
+  group_by(hh_comb) %>% 
+  summarise(num= n(), 
+            num_children= first(num_children), 
+            avg_ratio =  mean(ratio_incomeres_food), 
+            sd_ratio = sd(ratio_incomeres_food), 
+            max_ratio = max(ratio_incomeres_food), 
+            min_ratio = min(ratio_incomeres_food) ) %>% 
+  arrange(-num) %>% 
+  mutate(per_sim = num/sum(num), 
+         cum = cumsum(num)/sum(num))
+
+#food insecure hh with children
+food_insec_hh_comb_children  <- food_insec_hh_comb %>% filter(num_children != 0) %>% select( - c(per_sim, cum)) %>% mutate(prop = num/sum(num) , 
+         cumul = cumsum(num)/sum(num))
+
+#food insecure hh without children
+food_insec_hh_comb_no_children  <- food_insec_hh_comb %>% filter(num_children == 0) %>% select( - c(per_sim, cum)) %>% mutate(prop = num/sum(num) , 
+         cumul = cumsum(num)/sum(num))
+
+
+
+#data for food insecure with the identification of children and no children
+food_insec_children_id  <- data_fi_insecure %>% 
+  mutate( digits = nchar(hh_comb), 
+          num_children = no_teenager + no_schooler+ no_preschooler + no_toddler + no_infant) %>% 
+  filter( digits == 6)
+
+number_top <- 40
+
+#largest hh_comb of food insecure with children
+#hh_80_child <- food_insec_hh_comb_children %>% filter(cumul < 0.8) %>% pull(hh_comb)
+hh_80_child <- food_insec_hh_comb_children %>% head(number_top) %>% pull(hh_comb)
+#hh_80_child_list <- c(hh_80_child)
+
+
+### plot summary hh with children
+# ggplot(food_insec_children_id %>% filter( hh_comb %in% hh_80_child ) , aes(x=hh_comb, y=ratio_incomeres_food)) + 
+#   stat_summary()
+
+
+ggplot(food_insec_children_id %>% filter( hh_comb %in% hh_80_child ), aes(x=as.factor(hh_comb), y=ratio_incomeres_food)) +
+  geom_point(size=0.5) +
+   stat_summary(color="red", size=1) 
+
+######
+
+library(ggpubr) 
+
+
 
 #data for food insecure with the identification of children and no children
 food_insec_children_id  <- data_fi_insecure %>% 
@@ -728,11 +817,11 @@ fi_var_hh_children <- ggplot(food_insec_hh_comb_children %>% head(number_top), a
   geom_hline(yintercept=-2, linetype="dashed", color = "#911C43") +
   geom_hline(yintercept= 0, linetype="dashed", color = "red") + 
   geom_hline(yintercept= 1, linetype="dashed", color = "orange") +
-  annotate("text", y= -1, x="101010", label="Medium ",  size=3) +
-  annotate("text", y= 0.5, x="101010", label="Partial ",  size=3) +
-  annotate("text", y= -8, x="101010", label="Severe ",  size=3) + 
+  # annotate("text", y= -1, x="101010", label="Medium ",  size=3) +
+  # annotate("text", y= 0.5, x="101010", label="Partial ",  size=3) +
+  # annotate("text", y= -8, x="101010", label="Severe ",  size=3) + 
   labs(title="Food Insecure Households with Children in Washington DC",
-       subtitle="Blue Circle = Food Coverage Ratio Mean;\nYellow Rectangle = Food Coverage Ratio Range") +
+       subtitle="Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nBlue Circle = Food Coverage Ratio Mean;\nYellow Rectangle = Food Coverage Ratio Range") +
   theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
         plot.subtitle=element_text(size=9, hjust=0.5),
         #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5),
@@ -740,10 +829,12 @@ fi_var_hh_children <- ggplot(food_insec_hh_comb_children %>% head(number_top), a
         axis.text.y=element_text(size=9), #, hjust=1.5),
         axis.title.y=element_text(size=11),
         axis.title.x=element_text(size=11, vjust=-3),
-        legend.position="bottom")
+        legend.position="bottom") +
+  scale_y_continuous(breaks = round(seq(-10, 2, by = 1),1)) +
+  annotate("text", y= 1.5, x="101010", label="458 ",  size=3)
 
 #add annotation
-plot_fi_var_hh_children <- ggdraw(add_sub(fi_var_hh_children, "Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nHousehold combinations included: 100000, 200000, 300000, 400000, 500000, 600000, 700000.", size = 8, vjust=1.2))
+plot_fi_var_hh_children <- ggdraw(add_sub(fi_var_hh_children, " ", size = 8, vjust=1.2))
 
 plot_fi_var_hh_children
 
@@ -754,5 +845,59 @@ sum(group_largest$num)
 
 
 ###lab
+```
+
+```{r}
+
+list_plot_x <- food_insec_hh_comb_children %>% head(number_top) %>% select(hh_comb) %>% pull() %>% as.character()
+list_plot_label <- food_insec_hh_comb_children %>% head(number_top) %>% select(num) %>% pull() %>% as.character()
+
+
+fi_var_hh_children <- ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= reorder( as.factor(hh_comb), avg_ratio, FUN= mean ) , y= avg_ratio ))  + 
+# ggplot(food_insec_hh_comb_children %>% head(number_top), aes(x= as.factor(hh_comb), y=avg_ratio)) + 
+  geom_errorbar(aes(ymin=min_ratio, ymax=max_ratio), width=0 ,
+                 position=position_dodge(.9), color = "#EDD29C", cex = 2) + 
+  geom_point(stat="identity", color="black", cex = 2, pch = 21, fill = "#6FB2E4",
+           position= position_dodge(width = .9) ) + 
+           #position= "dodge" ) + 
+  coord_flip() + 
+  theme_bw() +
+  labs(y=" Food Coverage Ratio", 
+       x = "Household compositions (40 largest)" ) +
+  theme(
+  axis.title.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10), 
+  axis.text.y =element_text(size=5), 
+  panel.background=element_rect(fill="transparent"),
+        text=element_text(color="#22211d"),
+        plot.title=element_text(size=14, face="bold", hjust=0.5, vjust=-1.0),
+        plot.subtitle=element_text(size=11, hjust=0.5, vjust=-0.5),
+        plot.caption=element_text(size=9, hjust=0)
+  ) + 
+  geom_hline(yintercept=-2, linetype="dashed", color = "#911C43") +
+  geom_hline(yintercept= 0, linetype="dashed", color = "red") + 
+  geom_hline(yintercept= 1, linetype="dashed", color = "orange") +
+  # annotate("text", y= -1, x="101010", label="Medium ",  size=3) +
+  # annotate("text", y= 0.5, x="101010", label="Partial ",  size=3) +
+  # annotate("text", y= -8, x="101010", label="Severe ",  size=3) + 
+  labs(title="Food Insecure Households with Children in Washington DC",
+       subtitle="Household Combination: Adult/Teenager/Schooler/Preschooler/Toddler/Infant \nBlue Circle = Food Coverage Ratio Mean; Blue number: Number of Household in the category. \nYellow Rectangle = Food Coverage Ratio Range") +
+  theme(plot.title=element_text(size=13, face="bold", hjust=0.5, vjust=2.0),
+        plot.subtitle=element_text(size=9, hjust=0.5),
+        #panel.grid.major.y=element_line(color=cbPalette[1], size=0.5),
+        axis.text.x=element_text(size=9 ), #, vjust=5.0),
+        axis.text.y=element_text(size=9), #, hjust=1.5),
+        axis.title.y=element_text(size=11),
+        axis.title.x=element_text(size=11, vjust=-3),
+        legend.position="bottom") +
+  scale_y_continuous(breaks = round(seq(-10, 2, by = 1),1)) +
+  #annotate("text", y= 1.5, x="101010", label="458 ",  size=3)
+annotate("text", y= 1.5, x= list_plot_x, label= list_plot_label,  size=3, color= "#3300FF")
+
+plot_fi_var_hh_children <- ggdraw(add_sub(fi_var_hh_children, " ", size = 8, vjust=1.2))
+
+plot_fi_var_hh_children
+
+
 ```
 
